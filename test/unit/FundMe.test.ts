@@ -6,6 +6,7 @@ import { assert, expect } from "chai";
 describe("FundMe", async function () {
   let fundMe: FundMe;
   let deployer: SignerWithAddress;
+  let attacker: SignerWithAddress;
   let mockV3Aggregator: MockV3Aggregator;
   const sendValue = ethers.utils.parseEther("1"); // 1 eth
   beforeEach(async function () {
@@ -70,6 +71,55 @@ describe("FundMe", async function () {
       assert.equal(
         startingFundMeBalance.add(startingDeployerBalance).toString(),
         endingDeployerBalance.add(gasCost).toString()
+      );
+    });
+
+    it("Allows the withdraw with multiple funders", async function () {
+      const accounts = await ethers.getSigners();
+      for (let i = 1; i < 6; i++) {
+        const fundMeConnectedContract = await fundMe.connect(accounts[i]);
+        fundMeConnectedContract.fund({ value: sendValue });
+      }
+      const startingFundMeBalance = await fundMe.provider.getBalance(
+        fundMe.address
+      );
+      const startingDeployerBalance = await fundMe.provider.getBalance(
+        deployer.address
+      );
+
+      const transactionResponse = await fundMe.withdraw();
+      const transactionReceipt = await transactionResponse.wait(1);
+      const { gasUsed, effectiveGasPrice } = transactionReceipt;
+      const gasCost = gasUsed.mul(effectiveGasPrice);
+
+      const endingFundMeBalance = await fundMe.provider.getBalance(
+        fundMe.address
+      );
+      const endingDeployerBalance = await fundMe.provider.getBalance(
+        deployer.address
+      );
+
+      assert.equal(endingFundMeBalance.toString(), "0");
+      assert.equal(
+        startingFundMeBalance.add(startingDeployerBalance).toString(),
+        endingDeployerBalance.add(gasCost).toString()
+      );
+
+      await expect(fundMe.funders(0)).to.be.reverted;
+
+      for (let i = 1; i < 6; i++) {
+        assert.equal(
+          (await fundMe.addressToAmountFunded(accounts[i].address)).toString(),
+          "0"
+        );
+      }
+    });
+    it("Only allows the owner to withdraw", async function () {
+      const accounts = await ethers.getSigners();
+      attacker = accounts[1];
+      const attackerConnectedContract = await fundMe.connect(attacker);
+      await expect(attackerConnectedContract.withdraw()).to.be.revertedWith(
+        "FundMe__NotOwner()"
       );
     });
   });
