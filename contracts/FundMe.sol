@@ -6,6 +6,7 @@ import "./PriceConverter.sol";
 
 error FundMe__NotOwner();
 error FundMe__LowFunding();
+error FundMe__TransferFailed();
 
 /** @title A contract for crowd funding
  *   @author Vitor Marthendal
@@ -45,10 +46,9 @@ contract FundMe {
   }
 
   function fund() public payable {
-    if (msg.value.getConversionRate(s_priceFeed) >= MINIMUM_USD)
+    if (msg.value.getConversionRate(s_priceFeed) <= MINIMUM_USD)
       revert FundMe__LowFunding();
 
-    // require(PriceConverter.getConversionRate(msg.value) >= MINIMUM_USD, "You need to spend more ETH!");
     s_addressToAmountFunded[msg.sender] += msg.value;
     s_funders.push(msg.sender);
   }
@@ -68,7 +68,8 @@ contract FundMe {
       ""
     );
     // call vs delegatecall
-    require(success, "Transfer failed");
+    // require(success, "Transfer failed");
+    if (!success) revert FundMe__TransferFailed();
   }
 
   function cheaperWithdraw() public payable onlyOwner {
@@ -79,7 +80,8 @@ contract FundMe {
     }
     s_funders = new address[](0);
     (bool success, ) = i_owner.call{value: address(this).balance}("");
-    require(success);
+    // require(success);
+    if (!success) revert FundMe__TransferFailed();
   }
 
   function getOwner() public view returns (address) {
